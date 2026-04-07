@@ -1,4 +1,4 @@
-# Cubesat_Prototype
+# 🛰️Cubesat_Prototype
 A low-cost CubeSat communication network prototype consisting of a rescue tower, satellite node, and ground station using LoRa communication and ESP32/Arduino microcontrollers.
 
 # ℹAbstract
@@ -36,16 +36,23 @@ The CubeSat concept originated in the late 1990s as a collaborative effort betwe
 ## layer 1-Antenna
 
 ## layer 2-communication radio
+![Comm Radio jpg](https://github.com/user-attachments/assets/2445d713-458b-430c-b34e-dcdbed2b15d3)
+
 
 ## layer 3-On Board Computer
+![On Board Computer jpg](https://github.com/user-attachments/assets/884597f9-a8e2-4e25-a914-c30b1ea9f25b)
 
-## layer 4-Attitude control rods
+
+## layer 4-Attitude control rods and sensors
+![Sensors jpg](https://github.com/user-attachments/assets/18ae4a67-b1fd-4ca9-b252-206e4094bce7)
 
 ## layer 5-power management system and antenna deploy ment system
 <img width="1035" height="715" alt="image" src="https://github.com/user-attachments/assets/6fafc4e4-1374-4dd9-bae1-6034a87575e3" />
 
 
 ## layer 6-magnet and battery
+![battery jpg](https://github.com/user-attachments/assets/24afe857-c1c7-4c78-bb11-d20adc6877af)
+
 
 ## Block Diagram For communication
 <img width="1187" height="560" alt="image" src="https://github.com/user-attachments/assets/f1cdeadf-aaf6-464f-b8ff-36e7969fd3dc" />
@@ -54,6 +61,8 @@ The CubeSat concept originated in the late 1990s as a collaborative effort betwe
 ## Rescue Management System
 <img width="2138" height="1202" alt="image" src="https://github.com/user-attachments/assets/1031372b-e7c2-4a83-b71b-8fddf23633d2" />
 
+
+# Groundstation
 
 
 ## 📌 Pin Configuration
