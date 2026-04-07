@@ -1,6 +1,50 @@
 # Cubesat_Prototype
 A low-cost CubeSat communication network prototype consisting of a rescue tower, satellite node, and ground station using LoRa communication and ESP32/Arduino microcontrollers.
 
+# Abstract
+This project presents a compact satellite-based rescue communication system integrating a rescue tower, CubeSat, and ground station with a real-time dashboard. A distress signal transmitted from a DIY rescue tower antenna is received by the CubeSat, which acts as a relay and forwards the signal to the ground station. The ground station processes the data and displays it on a dashboard for monitoring and response. The system demonstrates the practical implementation of CubeSat communication, embedded systems, and long-range wireless transmission using LoRa technology.
+
+# Introduction📒
+The increasing need for reliable communication in remote and disaster-affected regions has led to the development of satellite-assisted emergency systems. This project focuses on designing and implementing a complete rescue communication chain consisting of a rescue tower, a CubeSat-based relay system, and a ground station integrated with a real-time dashboard.
+
+The rescue tower is designed using a DIY antenna system and is responsible for transmitting distress signals. It is controlled by an ESP32 microcontroller, which interfaces with a LoRa RA-02 module to enable long-range, low-power communication.
+
+The CubeSat module acts as a relay satellite and is controlled using a Raspberry Pi Zero W. It includes a communication subsystem based on the LoRa RA-02 module to receive and retransmit signals. The satellite is equipped with an automated antenna deployment system that uses a burn wire circuit mechanism to release the antenna after deployment. Additionally, it incorporates various sensors for monitoring environmental and system parameters, along with a dedicated power management system to efficiently regulate and distribute power among onboard components.
+
+The ground station is responsible for receiving the relayed signal from the CubeSat and processing it for visualization. It is built using an Arduino Nano for signal handling and decoding, along with an ESP32 module for wireless communication and internet connectivity. The processed data is then transmitted to a dashboard interface, where the rescue message is displayed in real time.
+
+Communication between all components is established using LoRa RA-02 modules, ensuring reliable long-range transmission with minimal power consumption. The integration of embedded systems, satellite communication principles, and IoT-based dashboard visualization makes this project a scalable and cost-effective solution for emergency communication applications.
+
+# What are CubeSats?
+CubeSats are a class of nanosatellites that use a standard size and form factor. The standard CubeSat size uses a “one unit” or “1U” measuring 10x10x10 cms and is extendable to larger sizes; 1.5, 2, 3, 6, and even 12U. Originally developed in 1999 by California Polytechnic State University at San Luis Obispo (Cal Poly) and Stanford University to provide a platform for education and space exploration. The development of CubeSats has advanced into its own industry with government, industry and academia collaborating for ever increasing capabilities. CubeSats now provide a cost effective platform for science investigations, new technology demonstrations and advanced mission concepts using constellations, swarms disaggregated systems. 
+<img width="1925" height="809" alt="image" src="https://github.com/user-attachments/assets/c1b229c7-d5f7-4fd8-88fa-bec8c888d0fe" />
+
+## Why CubeSats ?
+- size 4x4x4 inches
+- Mass=1.33kg
+- allows for cost-effective development and deployment
+- CubeSats have lower costs compared to large satellites.
+- Shorter development times (CubeSats can be built within two years.)
+- Flexible services(CubeSats can be used for different missions and purposes).
+
+## History📖
+The CubeSat concept originated in the late 1990s as a collaborative effort between Stanford University's Space Systems Development Laboratory (SSDL) and California Polytechnic State University (Cal Poly). Professors Bob Twiggs (Stanford) and Jordi Puig-Suari (Cal Poly) proposed the idea of a standardized, small satellite format to enable affordable space access for universities and other entities.
+
+# Components and Structure of CubeSat
+<img width="1011" height="688" alt="image" src="https://github.com/user-attachments/assets/c40eb6d1-0254-4549-b1b1-67029c11f4e4" />
+
+## layer 1-Antenna
+
+## layer 2-communication radio
+
+## layer 3-On Board Computer
+
+## layer 4-Attitude control rods
+
+## layer 5-power management system
+
+## layer 6-magnet and battery
+
 
 ## 📌 Pin Configuration
 
