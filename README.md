@@ -41,7 +41,9 @@ The CubeSat concept originated in the late 1990s as a collaborative effort betwe
 
 ## layer 4-Attitude control rods
 
-## layer 5-power management system
+## layer 5-power management system and antenna deploy ment system
+<img width="1035" height="715" alt="image" src="https://github.com/user-attachments/assets/6fafc4e4-1374-4dd9-bae1-6034a87575e3" />
+
 
 ## layer 6-magnet and battery
 
