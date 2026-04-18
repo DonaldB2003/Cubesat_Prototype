@@ -123,9 +123,8 @@ def init_lora():
 # RECEIVE FUNCTION
 # ══════════════════════════════════════════════════════════════
 def receive_loop():
-    print("Listening for packets...\n")
+    print("Listening for structured packets...\n")
 
-    # Continuous RX mode
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_RX_CONT)
 
     try:
@@ -133,32 +132,64 @@ def receive_loop():
             irq = read_reg(REG_IRQ_FLAGS)
 
             if irq & 0x40:  # RxDone
-                # Get packet length
-                length = read_reg(REG_RX_NB_BYTES)
 
-                # Set FIFO pointer to current RX
+                length = read_reg(REG_RX_NB_BYTES)
                 fifo_addr = read_reg(0x10)
                 write_reg(REG_FIFO_ADDR_PTR, fifo_addr)
 
                 payload = read_fifo(length)
 
+                raw_msg = bytes(payload).decode('utf-8', errors='ignore')
+
+                print("\n📦 RAW:", raw_msg)
+
+                # ─── PARSE PACKET ─────────────────────────
                 try:
-                    message = bytes(payload).decode('utf-8', errors='ignore')
-                except:
-                    message = str(payload)
+                    parts = raw_msg.strip().split(',')
 
-                rssi = read_reg(REG_PKT_RSSI) - 157
-                snr  = read_reg(REG_PKT_SNR) / 4.0
+                    if len(parts) != 6:
+                        print("⚠️ Invalid format")
+                        continue
 
-                print("=================================")
-                print(f"Received: {message}")
-                print(f"RSSI: {rssi} dBm | SNR: {snr} dB")
-                print("=================================\n")
+                    msg_id   = int(parts[0])
+                    timestamp= int(parts[1])
+                    lat      = float(parts[2])
+                    lon      = float(parts[3])
+                    msg_type = parts[4]
+                    rx_crc   = int(parts[5])
+
+                    calc_crc = msg_id + timestamp
+
+                    print("=================================")
+                    print(f"ID       : {msg_id}")
+                    print(f"Time(ms) : {timestamp}")
+                    print(f"Location : {lat}, {lon}")
+                    print(f"Type     : {msg_type}")
+
+                    if calc_crc == rx_crc:
+                        print("CRC      : ✅ OK")
+                    else:
+                        print("CRC      : ❌ FAIL")
+
+                    rssi = read_reg(REG_PKT_RSSI) - 157
+                    snr  = read_reg(REG_PKT_SNR) / 4.0
+
+                    print(f"RSSI     : {rssi} dBm")
+                    print(f"SNR      : {snr} dB")
+                    print("=================================\n")
+
+                except Exception as e:
+                    print("❌ Parse Error:", e)
 
                 # Clear IRQ
                 write_reg(REG_IRQ_FLAGS, 0xFF)
 
             time.sleep(0.05)
+
+    except KeyboardInterrupt:
+        print("\nStopped")
+    finally:
+        GPIO.cleanup()
 
     except KeyboardInterrupt:
         print("\nStopped")
