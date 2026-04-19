@@ -1,0 +1,91 @@
+import serial
+import pynmea2
+import time
+import math
+
+# ── Known reference location (get from Google Maps) ───────────
+KNOWN_LAT  = 0.0      # your actual latitude
+KNOWN_LON  = 0.0      # your actual longitude
+KNOWN_ALT  = 0.0      # your actual altitude in meters
+
+print("=" * 55)
+print("       NEO-6M GPS CALIBRATION & TEST")
+print("=" * 55)
+print("⚠️  Must be OUTDOORS with clear sky view!")
+print("⚠️  Set KNOWN_LAT, KNOWN_LON, KNOWN_ALT for accuracy test")
+print("Waiting for GPS fix...")
+print("-" * 55)
+
+ser = serial.Serial('/dev/serial0', 9600, timeout=1)
+
+fix_count   = 0
+total_count = 0
+lats, lons, alts = [], [], []
+start = time.time()
+
+while fix_count < 10:
+    try:
+        line = ser.readline().decode('ascii', errors='replace').strip()
+        if not line.startswith(('$GPGGA','$GNGGA')):
+            continue
+
+        msg = pynmea2.parse(line)
+        total_count += 1
+        fix  = int(msg.gps_qual) if msg.gps_qual else 0
+        sats = int(msg.num_sats) if msg.num_sats else 0
+        lat  = float(msg.latitude)  if msg.latitude  else 0.0
+        lon  = float(msg.longitude) if msg.longitude else 0.0
+        alt  = float(msg.altitude)  if msg.altitude  else 0.0
+
+        elapsed = round(time.time()-start, 1)
+
+        if fix == 0:
+            print(f"  [{elapsed}s] Searching... SATS:{sats}")
+            continue
+
+        fix_count += 1
+        lats.append(lat); lons.append(lon); alts.append(alt)
+
+        # Calculate error vs known position
+        if KNOWN_LAT and KNOWN_LON:
+            dlat = (lat - KNOWN_LAT) * 111320
+            dlon = (lon - KNOWN_LON) * 111320 * math.cos(math.radians(lat))
+            err  = round(math.sqrt(dlat**2 + dlon**2), 1)
+            alt_err = round(alt - KNOWN_ALT, 1)
+            print(f"  [FIX {fix_count:02d}] LAT:{lat:.6f} LON:{lon:.6f}"
+                  f" ALT:{alt:.1f}m SATS:{sats}"
+                  f" POS_ERR:{err}m ALT_ERR:{alt_err:+.1f}m")
+        else:
+            print(f"  [FIX {fix_count:02d}] LAT:{lat:.6f} LON:{lon:.6f}"
+                  f" ALT:{alt:.1f}m SATS:{sats}")
+
+    except Exception as e:
+        continue
+
+# ── Calibration summary ───────────────────────────────────────
+print("-" * 55)
+avg_lat = round(sum(lats)/len(lats), 6)
+avg_lon = round(sum(lons)/len(lons), 6)
+avg_alt = round(sum(alts)/len(alts), 1)
+print(f"Average position → LAT:{avg_lat} LON:{avg_lon} ALT:{avg_alt}m")
+
+lat_var = round((max(lats)-min(lats))*111320, 1)
+lon_var = round((max(lons)-min(lons))*111320, 1)
+alt_var = round(max(alts)-min(alts), 1)
+print(f"Position variance → LAT:{lat_var}m LON:{lon_var}m ALT:{alt_var}m")
+
+if KNOWN_LAT and KNOWN_LON:
+    dlat = (avg_lat-KNOWN_LAT)*111320
+    dlon = (avg_lon-KNOWN_LON)*111320*math.cos(math.radians(avg_lat))
+    total_err = round(math.sqrt(dlat**2+dlon**2), 1)
+    print(f"Total position error vs known: {total_err}m")
+    if total_err <= 5:
+        print("Accuracy: EXCELLENT ✓ (≤5m CEP)")
+    elif total_err <= 10:
+        print("Accuracy: GOOD ✓ (≤10m CEP)")
+    else:
+        print("Accuracy: POOR ✗ — check antenna/sky view")
+
+ser.close()
+print("=" * 55)
+print("GPS Calibration DONE ✓")
