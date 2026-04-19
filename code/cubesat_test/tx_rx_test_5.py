@@ -1,14 +1,17 @@
 import time
 import smbus2
-import math
 import serial
 import pynmea2
 import RPi.GPIO as GPIO
 
-# ─── LED SETUP ─────────────────────────
+# ─── GPIO SAFETY ──────────────────────
+GPIO.setwarnings(False)
+GPIO.cleanup()
+GPIO.setmode(GPIO.BCM)
+
+# ─── LED SETUP ────────────────────────
 LED_RED, LED_GREEN, LED_BLUE = 23, 25, 16
 
-GPIO.setmode(GPIO.BCM)
 GPIO.setup(LED_RED, GPIO.OUT)
 GPIO.setup(LED_GREEN, GPIO.OUT)
 GPIO.setup(LED_BLUE, GPIO.OUT)
@@ -16,8 +19,9 @@ GPIO.setup(LED_BLUE, GPIO.OUT)
 # ─── DHT11 ────────────────────────────
 DHT_PIN = 24
 
-def read_dht11():
+def read_dht11(timeout=1):
     data = []
+    start_time = time.time()
 
     GPIO.setup(DHT_PIN, GPIO.OUT)
     GPIO.output(DHT_PIN, GPIO.LOW)
@@ -25,18 +29,33 @@ def read_dht11():
     GPIO.output(DHT_PIN, GPIO.HIGH)
     GPIO.setup(DHT_PIN, GPIO.IN)
 
-    while GPIO.input(DHT_PIN) == 1: pass
-    while GPIO.input(DHT_PIN) == 0: pass
-    while GPIO.input(DHT_PIN) == 1: pass
+    # Timeout-safe waits
+    while GPIO.input(DHT_PIN) == 1:
+        if time.time() - start_time > timeout:
+            return None, None
+
+    while GPIO.input(DHT_PIN) == 0:
+        if time.time() - start_time > timeout:
+            return None, None
+
+    while GPIO.input(DHT_PIN) == 1:
+        if time.time() - start_time > timeout:
+            return None, None
 
     for i in range(40):
-        while GPIO.input(DHT_PIN) == 0: pass
+        loop_start = time.time()
+
+        while GPIO.input(DHT_PIN) == 0:
+            if time.time() - loop_start > timeout:
+                return None, None
+
         start = time.time()
-        while GPIO.input(DHT_PIN) == 1: pass
-        if (time.time() - start) > 0.00005:
-            data.append(1)
-        else:
-            data.append(0)
+
+        while GPIO.input(DHT_PIN) == 1:
+            if time.time() - start > timeout:
+                return None, None
+
+        data.append(1 if (time.time() - start) > 0.00005 else 0)
 
     bytes_data = []
     for i in range(5):
@@ -62,11 +81,13 @@ bus.write_byte_data(MPU_ADDR, 0x6B, 0x00)
 # ─── GPS SETUP ────────────────────────
 ser = serial.Serial('/dev/serial0', 9600, timeout=1)
 
-def read_gps():
-    while True:
-        line = ser.readline().decode('ascii', errors='ignore')
-        if line.startswith(('$GPGGA', '$GNGGA')):
-            try:
+def read_gps(timeout=5):
+    start_time = time.time()
+
+    while time.time() - start_time < timeout:
+        try:
+            line = ser.readline().decode('ascii', errors='ignore')
+            if line.startswith(('$GPGGA', '$GNGGA')):
                 msg = pynmea2.parse(line)
                 if int(msg.gps_qual) > 0:
                     lat = float(msg.latitude)
@@ -74,44 +95,55 @@ def read_gps():
                     alt = float(msg.altitude)
                     GPIO.output(LED_BLUE, GPIO.HIGH)
                     return lat, lon, alt
-            except:
-                pass
-        GPIO.output(LED_BLUE, GPIO.LOW)
+        except:
+            pass
+
+    GPIO.output(LED_BLUE, GPIO.LOW)
+    return 0.0, 0.0, 0.0  # fallback
 
 # ─── RTC ──────────────────────────────
 def get_time():
-    d = bus.read_i2c_block_data(RTC_ADDR, 0x00, 3)
-    s = (d[0]&0x0F)+((d[0]>>4)*10)
-    m = (d[1]&0x0F)+((d[1]>>4)*10)
-    h = (d[2]&0x0F)+((d[2]>>4)*10)
-    return h*3600 + m*60 + s
+    try:
+        d = bus.read_i2c_block_data(RTC_ADDR, 0x00, 3)
+        s = (d[0]&0x0F)+((d[0]>>4)*10)
+        m = (d[1]&0x0F)+((d[1]>>4)*10)
+        h = (d[2]&0x0F)+((d[2]>>4)*10)
+        return h*3600 + m*60 + s
+    except:
+        return 0
 
 # ─── MPU6050 ──────────────────────────
 def read_mpu():
-    def rw(r):
-        h = bus.read_byte_data(MPU_ADDR, r)
-        l = bus.read_byte_data(MPU_ADDR, r+1)
-        v = (h<<8)+l
-        return v-65536 if v>=0x8000 else v
+    try:
+        def rw(r):
+            h = bus.read_byte_data(MPU_ADDR, r)
+            l = bus.read_byte_data(MPU_ADDR, r+1)
+            v = (h<<8)+l
+            return v-65536 if v>=0x8000 else v
 
-    ax = rw(0x3B)/16384.0
-    ay = rw(0x3D)/16384.0
-    az = rw(0x3F)/16384.0
+        ax = rw(0x3B)/16384.0
+        ay = rw(0x3D)/16384.0
+        az = rw(0x3F)/16384.0
 
-    return round(ax,2), round(ay,2), round(az,2)
+        return round(ax,2), round(ay,2), round(az,2)
+    except:
+        return 0.0, 0.0, 0.0
 
-# ─── BMP280 (simplified) ──────────────
+# ─── BMP280 ───────────────────────────
 def read_bmp():
-    d = bus.read_i2c_block_data(BMP_ADDR, 0xF7, 6)
-    adc = (d[0]<<12)|(d[1]<<4)|(d[2]>>4)
-    pressure = adc / 25600.0
-    altitude = 44330*(1-(pressure/1013.25)**0.1903)
-    return round(pressure,2), round(altitude,2)
+    try:
+        d = bus.read_i2c_block_data(BMP_ADDR, 0xF7, 6)
+        adc = (d[0]<<12)|(d[1]<<4)|(d[2]>>4)
+        pressure = adc / 25600.0
+        altitude = 44330*(1-(pressure/1013.25)**0.1903)
+        return round(pressure,2), round(altitude,2)
+    except:
+        return 0.0, 0.0
 
 # ─── LoRa SEND ────────────────────────
 def send_packet(data):
-    # 🔴 PASTE YOUR WORKING LoRa send_packet() HERE
-    pass
+    # TODO: Add your LoRa code here
+    print("📤 Sending:", data)
 
 msg_id = 0
 
@@ -147,7 +179,7 @@ def send_telemetry():
         print("❌ ERROR:", e)
         GPIO.output(LED_RED, GPIO.HIGH)
 
-# ─── EMERGENCY (same format as your system) ───
+# ─── EMERGENCY ────────────────────────
 def send_emergency(msg_type="RESCUE"):
     global msg_id
     msg_id += 1
@@ -168,12 +200,9 @@ print("🛰️ CubeSat Flight Code Started (GPS Mode)")
 try:
     while True:
         send_telemetry()
-
-        # Example manual trigger:
-        # send_emergency("MEDICAL")
-
         time.sleep(2)
 
 except KeyboardInterrupt:
+    print("\n🛑 Stopping...")
     GPIO.cleanup()
     ser.close()
