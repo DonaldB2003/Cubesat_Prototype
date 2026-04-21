@@ -5,7 +5,6 @@ import smbus2
 # ─── PINOUT ─────────────────────────────
 NSS  = 5
 RST  = 22
-DIO0 = 4
 SCK  = 18
 MISO = 19
 MOSI = 23
@@ -16,8 +15,6 @@ REG_OP_MODE       = 0x01
 REG_FRF_MSB       = 0x06
 REG_FRF_MID       = 0x07
 REG_FRF_LSB       = 0x08
-REG_FIFO_TX_BASE  = 0x0E
-REG_FIFO_RX_BASE  = 0x0F
 REG_FIFO_ADDR_PTR = 0x0D
 REG_FIFO_RX_CURR  = 0x10
 REG_IRQ_FLAGS     = 0x12
@@ -31,6 +28,7 @@ MODE_STDBY      = 0x01
 MODE_TX         = 0x03
 MODE_RX_CONT    = 0x05
 
+# ─── GPIO SETUP ─────────────────────────
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
 
@@ -40,7 +38,7 @@ GPIO.setup(SCK, GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(MOSI, GPIO.OUT, initial=GPIO.LOW)
 GPIO.setup(MISO, GPIO.IN)
 
-# ─── SPI ───────────────────────────────
+# ─── SOFTWARE SPI ───────────────────────
 def spi_transfer_byte(data):
     received = 0
     for i in range(8):
@@ -81,21 +79,24 @@ def init_lora():
     time.sleep(0.1)
 
     if read_reg(REG_VERSION) != 0x12:
-        raise RuntimeError("LoRa not found")
+        raise RuntimeError("LoRa not detected")
 
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_SLEEP)
     time.sleep(0.1)
 
+    # 433 MHz
     frf = int(433e6 / (32e6 / 524288))
     write_reg(REG_FRF_MSB, (frf >> 16) & 0xFF)
     write_reg(REG_FRF_MID, (frf >> 8) & 0xFF)
     write_reg(REG_FRF_LSB, frf & 0xFF)
 
+    # Match ESP32 settings
     write_reg(0x1D, 0x72)
     write_reg(0x1E, 0x74)
     write_reg(0x26, 0x04)
 
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_RX_CONT)
+    print("✅ LoRa Ready")
 
 # ─── BMP280 ────────────────────────────
 bus = smbus2.SMBus(1)
@@ -116,34 +117,38 @@ bus.write_byte_data(BMP_ADDR, 0xF4, 0x27)
 bus.write_byte_data(BMP_ADDR, 0xF5, 0xA0)
 
 def read_bmp():
-    d = bus.read_i2c_block_data(BMP_ADDR, 0xF7, 6)
-    adc_P = (d[0]<<12)|(d[1]<<4)|(d[2]>>4)
-    adc_T = (d[3]<<12)|(d[4]<<4)|(d[5]>>4)
+    try:
+        d = bus.read_i2c_block_data(BMP_ADDR, 0xF7, 6)
 
-    var1 = ((adc_T/16384)-(dig_T1/1024))*dig_T2
-    var2 = ((adc_T/131072)-(dig_T1/8192))**2 * dig_T3
-    t_fine = var1+var2
-    temp = t_fine/5120
+        adc_P = (d[0]<<12)|(d[1]<<4)|(d[2]>>4)
+        adc_T = (d[3]<<12)|(d[4]<<4)|(d[5]>>4)
 
-    var1 = t_fine/2 - 64000
-    var2 = var1*var1*dig_P6/32768
-    var2 += var1*dig_P5*2
-    var2 = var2/4 + dig_P4*65536
-    var1 = (dig_P3*var1*var1/524288 + dig_P2*var1)/524288
-    var1 = (1 + var1/32768)*dig_P1
+        var1 = ((adc_T/16384)-(dig_T1/1024))*dig_T2
+        var2 = ((adc_T/131072)-(dig_T1/8192))**2 * dig_T3
+        t_fine = var1+var2
+        temp = t_fine/5120
 
-    pressure = 1048576 - adc_P
-    pressure = (pressure - var2/4096)*6250/var1
-    pressure /= 100
+        var1 = t_fine/2 - 64000
+        var2 = var1*var1*dig_P6/32768
+        var2 += var1*dig_P5*2
+        var2 = var2/4 + dig_P4*65536
+        var1 = (dig_P3*var1*var1/524288 + dig_P2*var1)/524288
+        var1 = (1 + var1/32768)*dig_P1
 
-    altitude = 44330*(1-(pressure/1013.25)**0.1903)
+        pressure = 1048576 - adc_P
+        pressure = (pressure - var2/4096)*6250/var1
+        pressure /= 100
 
-    return round(temp,2), round(pressure,2), round(altitude,2)
+        altitude = 44330*(1-(pressure/1013.25)**0.1903)
+
+        return round(temp,2), round(pressure,2), round(altitude,2)
+
+    except:
+        return None, None, None
 
 # ─── SEND ──────────────────────────────
 def send_packet(data):
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_STDBY)
-
     write_reg(REG_FIFO_ADDR_PTR, 0)
 
     GPIO.output(NSS, 0)
@@ -164,15 +169,12 @@ def send_packet(data):
 # ─── MAIN LOOP ─────────────────────────
 def loop():
     last_send = 0
-    last_rx_time = 0
 
     while True:
         irq = read_reg(REG_IRQ_FLAGS)
 
-        # RX packet
+        # ─── RECEIVE ─────────────────────
         if irq & 0x40:
-            last_rx_time = time.time()
-
             length = read_reg(REG_RX_NB_BYTES)
             fifo_addr = read_reg(REG_FIFO_RX_CURR)
             write_reg(REG_FIFO_ADDR_PTR, fifo_addr)
@@ -182,26 +184,31 @@ def loop():
 
             print("📥 RX:", msg)
 
-            # Relay
+            # RELAY
             parts = msg.split(',')
             if len(parts) >= 6 and parts[4] != "RELAYED":
                 parts[4] = "RELAYED"
                 new_msg = ",".join(parts)
+
+                print("🔁 RELAY:", new_msg)
                 send_packet(new_msg.encode())
 
             write_reg(REG_IRQ_FLAGS, 0xFF)
 
-        # SAFE SEND WINDOW
-        if (time.time() - last_send > 5) and (time.time() - last_rx_time > 2):
+        # ─── PERIODIC SENSOR TX ──────────
+        if time.time() - last_send > 5:
             temp, press, alt = read_bmp()
 
-            msg_id = int(time.time())
-            crc = msg_id + msg_id
+            if temp is not None:
+                msg_id = int(time.time())
+                crc = msg_id + msg_id
 
-            msg = f"{msg_id},{msg_id},{temp},{press},{alt},BASE,{crc}"
-            print("📤 TX:", msg)
+                msg = f"{msg_id},{msg_id},{temp},{press},{alt},BASE,{crc}"
+                print("📤 TX:", msg)
 
-            send_packet(msg.encode())
+                send_packet(msg.encode())
+            else:
+                print("❌ BMP FAIL")
 
             last_send = time.time()
 
@@ -209,5 +216,6 @@ def loop():
 
 # ─── START ─────────────────────────────
 init_lora()
-print("🚀 Smart Relay + Sensor Node Started")
+print("🚀 Relay + Sensor Node Started")
+
 loop()
