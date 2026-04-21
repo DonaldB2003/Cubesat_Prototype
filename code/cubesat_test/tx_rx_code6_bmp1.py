@@ -1,33 +1,68 @@
 import RPi.GPIO as GPIO
 import time
 import smbus2
-import math
 
-# ─── BMP280 SETUP ─────────────────────────────
-BUS = smbus2.SMBus(1)
-BMP280_ADDR = 0x76
+# ─────────────────────────────────────
+# BMP280 SETUP (CALIBRATED - YOUR METHOD)
+# ─────────────────────────────────────
+bus  = smbus2.SMBus(1)
+ADDR = 0x76
+
+cal = bus.read_i2c_block_data(ADDR, 0x88, 24)
+
+def u16(i): return (cal[i+1] << 8) | cal[i]
+def s16(i): v = u16(i); return v - 65536 if v > 32767 else v
+
+dig_T1 = u16(0);  dig_T2 = s16(2);  dig_T3 = s16(4)
+dig_P1 = u16(6)
+dig_P2 = s16(8);  dig_P3 = s16(10); dig_P4 = s16(12)
+dig_P5 = s16(14); dig_P6 = s16(16); dig_P7 = s16(18)
+dig_P8 = s16(20); dig_P9 = s16(22)
+
+bus.write_byte_data(ADDR, 0xF4, 0x27)
+bus.write_byte_data(ADDR, 0xF5, 0xA0)
+time.sleep(0.5)
 
 def read_bmp280():
     try:
-        # Read raw temp & pressure (simplified)
-        data = BUS.read_i2c_block_data(BMP280_ADDR, 0xF7, 6)
+        d = bus.read_i2c_block_data(ADDR, 0xF7, 6)
 
-        adc_p = (data[0] << 12) | (data[1] << 4) | (data[2] >> 4)
-        adc_t = (data[3] << 12) | (data[4] << 4) | (data[5] >> 4)
+        adc_P = (d[0] << 12) | (d[1] << 4) | (d[2] >> 4)
+        adc_T = (d[3] << 12) | (d[4] << 4) | (d[5] >> 4)
 
-        # VERY simplified conversion (approx)
-        temp = adc_t / 1000.0
-        pressure = adc_p / 100.0
+        # Temperature
+        var1 = ((adc_T / 16384.0) - (dig_T1 / 1024.0)) * dig_T2
+        var2 = ((adc_T / 131072.0) - (dig_T1 / 8192.0)) ** 2 * dig_T3
+        t_fine = var1 + var2
+        temp = t_fine / 5120.0
 
-        # Altitude estimation
-        altitude = 44330 * (1 - (pressure / 1013.25) ** 0.1903)
+        # Pressure
+        var1 = t_fine / 2.0 - 64000.0
+        var2 = var1 * var1 * dig_P6 / 32768.0
+        var2 = var2 + var1 * dig_P5 * 2.0
+        var2 = var2 / 4.0 + dig_P4 * 65536.0
+        var1 = (dig_P3 * var1 * var1 / 524288.0 + dig_P2 * var1) / 524288.0
+        var1 = (1.0 + var1 / 32768.0) * dig_P1
 
-        return round(temp,2), round(pressure,2), round(altitude,2)
+        if var1 == 0:
+            return 0, 0, 0
 
-    except:
-        return 0,0,0
+        pressure = 1048576.0 - adc_P
+        pressure = (pressure - var2 / 4096.0) * 6250.0 / var1
+        pressure = pressure / 100.0
 
-# ─── PINOUT ─────────────────────────────
+        altitude = 44330.0 * (1.0 - (pressure / 1013.25) ** (1.0 / 5.255))
+
+        return round(temp, 2), round(pressure, 2), round(altitude, 2)
+
+    except Exception as e:
+        print("BMP Error:", e)
+        return 0, 0, 0
+
+
+# ─────────────────────────────────────
+# LORA SETUP
+# ─────────────────────────────────────
 NSS  = 5
 RST  = 22
 DIO0 = 4
@@ -35,8 +70,6 @@ SCK  = 18
 MISO = 19
 MOSI = 23
 
-# (KEEP ALL YOUR EXISTING LORA CODE SAME)
-# ─── REGISTERS ─────────────────────────
 REG_FIFO = 0x00
 REG_OP_MODE = 0x01
 REG_FRF_MSB = 0x06
@@ -72,7 +105,7 @@ GPIO.setup(MOSI, GPIO.OUT)
 GPIO.setup(MISO, GPIO.IN)
 GPIO.setup(DIO0, GPIO.IN)
 
-# ─── SPI FUNCTIONS (same as yours) ───
+# ─── SPI ─────────────────────────────
 def spi_transfer_byte(data):
     received = 0
     for i in range(8):
@@ -114,12 +147,14 @@ def reset_lora():
 
 def init_lora():
     reset_lora()
+
     if read_reg(REG_VERSION) != 0x12:
         raise RuntimeError("LoRa not detected")
 
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_SLEEP)
     time.sleep(0.1)
 
+    # RX = 433 MHz
     frf = int(433e6 / (32e6 / 524288))
     write_reg(REG_FRF_MSB, (frf >> 16) & 0xFF)
     write_reg(REG_FRF_MID, (frf >> 8) & 0xFF)
@@ -138,6 +173,12 @@ def init_lora():
 
 # ─── SEND ─────────────────────────────
 def send_packet(data_bytes):
+    # Switch to TX = 434 MHz
+    frf = int(434e6 / (32e6 / 524288))
+    write_reg(REG_FRF_MSB, (frf >> 16) & 0xFF)
+    write_reg(REG_FRF_MID, (frf >> 8) & 0xFF)
+    write_reg(REG_FRF_LSB, frf & 0xFF)
+
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_STDBY)
     write_reg(REG_FIFO_ADDR_PTR, 0x00)
 
@@ -152,8 +193,16 @@ def send_packet(data_bytes):
 
     time.sleep(0.3)
 
+    # Back to RX = 433 MHz
+    frf = int(433e6 / (32e6 / 524288))
+    write_reg(REG_FRF_MSB, (frf >> 16) & 0xFF)
+    write_reg(REG_FRF_MID, (frf >> 8) & 0xFF)
+    write_reg(REG_FRF_LSB, frf & 0xFF)
+
 # ─── MAIN LOOP ────────────────────────
 def receive_loop():
+    print("📡 Listening + Relaying...\n")
+
     while True:
         irq = read_reg(REG_IRQ_FLAGS)
 
@@ -178,15 +227,14 @@ def receive_loop():
             timestamp = int(parts[1])
             lat = parts[2]
             lon = parts[3]
-            msg_type = "RELAYED"
 
-            # 🔥 Read BMP280
+            # ─── BMP280 READ ─────────────────
             temp, pressure, altitude = read_bmp280()
 
-            # 🔥 NEW CRC
+            # ─── NEW PACKET ──────────────────
             new_crc = msg_id + timestamp
 
-            new_msg = f"{msg_id},{timestamp},{lat},{lon},{msg_type},{temp},{pressure},{altitude},{new_crc}"
+            new_msg = f"{msg_id},{timestamp},{lat},{lon},RELAYED,{temp},{pressure},{altitude},{new_crc}"
 
             print("🔁 Sending with BMP280:", new_msg)
 
@@ -198,6 +246,10 @@ def receive_loop():
         time.sleep(0.05)
 
 def main():
+    print("=================================")
+    print("   LoRa RELAY NODE + BMP280")
+    print("=================================")
+
     init_lora()
     receive_loop()
 
