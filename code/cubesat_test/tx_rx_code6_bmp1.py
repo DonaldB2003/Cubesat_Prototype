@@ -3,9 +3,9 @@ import time
 import smbus2
 
 # ─────────────────────────────────────
-# BMP280 SETUP (CALIBRATED - YOUR METHOD)
+# BMP280 SETUP (CALIBRATED)
 # ─────────────────────────────────────
-bus  = smbus2.SMBus(1)
+bus = smbus2.SMBus(1)
 ADDR = 0x76
 
 cal = bus.read_i2c_block_data(ADDR, 0x88, 24)
@@ -61,7 +61,7 @@ def read_bmp280():
 
 
 # ─────────────────────────────────────
-# LORA SETUP
+# LORA SETUP (SX1278‑style)
 # ─────────────────────────────────────
 NSS  = 5
 RST  = 22
@@ -70,40 +70,41 @@ SCK  = 18
 MISO = 19
 MOSI = 23
 
-REG_FIFO = 0x00
-REG_OP_MODE = 0x01
-REG_FRF_MSB = 0x06
-REG_FRF_MID = 0x07
-REG_FRF_LSB = 0x08
-REG_FIFO_TX_BASE = 0x0E
-REG_FIFO_RX_BASE = 0x0F
-REG_FIFO_ADDR_PTR = 0x0D
-REG_FIFO_RX_CURR = 0x10
-REG_IRQ_FLAGS = 0x12
+REG_FIFO        = 0x00
+REG_OP_MODE     = 0x01
+REG_FRF_MSB     = 0x06
+REG_FRF_MID     = 0x07
+REG_FRF_LSB     = 0x08
+REG_FIFO_TX_BASE= 0x0E
+REG_FIFO_RX_BASE= 0x0F
+REG_FIFO_ADDR_PTR=0x0D
+REG_FIFO_RX_CURR=0x10
+REG_IRQ_FLAGS   = 0x12
 REG_RX_NB_BYTES = 0x13
-REG_PKT_RSSI = 0x1A
-REG_PKT_SNR = 0x1B
+REG_PKT_RSSI    = 0x1A
+REG_PKT_SNR     = 0x1B
 REG_PAYLOAD_LEN = 0x22
-REG_MODEM_CONFIG1 = 0x1D
-REG_MODEM_CONFIG2 = 0x1E
-REG_MODEM_CONFIG3 = 0x26
-REG_VERSION = 0x42
+REG_MODEM_CONFIG1=0x1D
+REG_MODEM_CONFIG2=0x1E
+REG_MODEM_CONFIG3=0x26
+REG_VERSION     = 0x42
 
 MODE_LONG_RANGE = 0x80
-MODE_SLEEP = 0x00
-MODE_STDBY = 0x01
-MODE_TX = 0x03
-MODE_RX_CONT = 0x05
+MODE_SLEEP      = 0x00
+MODE_STDBY      = 0x01
+MODE_TX         = 0x03
+MODE_RX_CONT    = 0x05
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
 
-GPIO.setup(NSS, GPIO.OUT, initial=GPIO.HIGH)
-GPIO.setup(RST, GPIO.OUT, initial=GPIO.HIGH)
-GPIO.setup(SCK, GPIO.OUT)
+GPIO.setup(NSS,  GPIO.OUT, initial=GPIO.HIGH)
+GPIO.setup(RST,  GPIO.OUT, initial=GPIO.HIGH)
+GPIO.setup(SCK,  GPIO.OUT)
 GPIO.setup(MOSI, GPIO.OUT)
 GPIO.setup(MISO, GPIO.IN)
 GPIO.setup(DIO0, GPIO.IN)
+
 
 # ─── SPI ─────────────────────────────
 def spi_transfer_byte(data):
@@ -138,6 +139,7 @@ def read_fifo(length):
     GPIO.output(NSS, GPIO.HIGH)
     return data
 
+
 # ─── INIT ─────────────────────────────
 def reset_lora():
     GPIO.output(RST, GPIO.LOW)
@@ -154,10 +156,10 @@ def init_lora():
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_SLEEP)
     time.sleep(0.1)
 
-    # RX = 433 MHz
+    # RX frequency = 433 MHz
     frf = int(433e6 / (32e6 / 524288))
     write_reg(REG_FRF_MSB, (frf >> 16) & 0xFF)
-    write_reg(REG_FRF_MID, (frf >> 8) & 0xFF)
+    write_reg(REG_FRF_MID, (frf >> 8)  & 0xFF)
     write_reg(REG_FRF_LSB, frf & 0xFF)
 
     write_reg(REG_FIFO_TX_BASE, 0x00)
@@ -171,12 +173,13 @@ def init_lora():
 
     print("✅ LoRa + BMP280 Ready")
 
-# ─── SEND ─────────────────────────────
+
+# ─── SEND PACKET ─────────────────────
 def send_packet(data_bytes):
     # Switch to TX = 434 MHz
     frf = int(434e6 / (32e6 / 524288))
     write_reg(REG_FRF_MSB, (frf >> 16) & 0xFF)
-    write_reg(REG_FRF_MID, (frf >> 8) & 0xFF)
+    write_reg(REG_FRF_MID, (frf >> 8)  & 0xFF)
     write_reg(REG_FRF_LSB, frf & 0xFF)
 
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_STDBY)
@@ -196,10 +199,11 @@ def send_packet(data_bytes):
     # Back to RX = 433 MHz
     frf = int(433e6 / (32e6 / 524288))
     write_reg(REG_FRF_MSB, (frf >> 16) & 0xFF)
-    write_reg(REG_FRF_MID, (frf >> 8) & 0xFF)
+    write_reg(REG_FRF_MID, (frf >> 8)  & 0xFF)
     write_reg(REG_FRF_LSB, frf & 0xFF)
 
-# ─── MAIN LOOP ────────────────────────
+
+# ─── MAIN LOOP: listen and relay ─────
 def receive_loop():
     print("📡 Listening + Relaying...\n")
 
@@ -207,12 +211,12 @@ def receive_loop():
         irq = read_reg(REG_IRQ_FLAGS)
 
         if irq & 0x40:
-            length = read_reg(REG_RX_NB_BYTES)
+            length   = read_reg(REG_RX_NB_BYTES)
             fifo_addr = read_reg(REG_FIFO_RX_CURR)
             write_reg(REG_FIFO_ADDR_PTR, fifo_addr)
 
-            payload = read_fifo(length)
-            raw_msg = bytes(payload).decode('utf-8', errors='ignore')
+            payload  = read_fifo(length)
+            raw_msg  = bytes(payload).decode('utf-8', errors='ignore')
 
             print("\n📦 RAW:", raw_msg)
 
@@ -223,20 +227,21 @@ def receive_loop():
                 write_reg(REG_IRQ_FLAGS, 0xFF)
                 continue
 
-            msg_id = int(parts[0])
+            msg_id    = int(parts[0])
             timestamp = int(parts[1])
-            lat = parts[2]
-            lon = parts[3]
+            lat       = parts[2]
+            lon       = parts[3]
 
             # ─── BMP280 READ ─────────────────
             temp, pressure, altitude = read_bmp280()
 
-            # ─── NEW PACKET ──────────────────
+            # ─── NEW PACKET (format your ESP32 expects) ───
+            # FORMAT: msg_id,timestamp,lat,lon,type,rx_crc,temp,pressure,altitude
             new_crc = msg_id + timestamp
 
-            new_msg = f"{msg_id},{timestamp},{lat},{lon},RELAYED,{temp},{pressure},{altitude},{new_crc}"
+            new_msg = f"{msg_id},{timestamp},{lat},{lon},RELAYED,{new_crc},{temp},{pressure},{altitude}"
 
-            print("🔁 Sending with BMP280:", new_msg)
+            print("🔁 Sending 9‑field packet:", new_msg)
 
             send_packet(new_msg.encode())
 
@@ -245,6 +250,8 @@ def receive_loop():
 
         time.sleep(0.05)
 
+
+# ─── MAIN ENTRY ──────────────────────
 def main():
     print("=================================")
     print("   LoRa RELAY NODE + BMP280")
