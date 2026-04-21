@@ -3,8 +3,8 @@ import time
 
 # ─── PINOUT ─────────────────────────────────────────────
 NSS  = 5
-RST  = 14
-DIO0 = 2
+RST  = 22
+DIO0 = 4
 SCK  = 18
 MISO = 19
 MOSI = 23
