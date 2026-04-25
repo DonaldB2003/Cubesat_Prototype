@@ -2,7 +2,7 @@ import RPi.GPIO as GPIO
 import time
 
 # ─── Pin ──────────────────────────────────────────────────────
-MOSFET = 18   # GPIO 18 → Pin 12
+MOSFET = 17   # GPIO 18 → Pin 12
 
 GPIO.setmode(GPIO.BCM)
 GPIO.setwarnings(False)
