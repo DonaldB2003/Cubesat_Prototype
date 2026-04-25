@@ -1,24 +1,27 @@
 import RPi.GPIO as GPIO
 import time
 
-MOSFET = 18
+# ─── Pin ──────────────────────────────────────────────────────
+MOSFET = 18   # GPIO 18 → Pin 12
 
 GPIO.setmode(GPIO.BCM)
+GPIO.setwarnings(False)
 GPIO.setup(MOSFET, GPIO.OUT, initial=GPIO.LOW)
 
-print("Testing MOSFET gate...")
-print("⚠️  DO NOT connect burn wire during this test!")
-print("Use a multimeter on DRAIN pin instead.")
+print("MOSFET Test")
+print("=" * 30)
+print("⚠️  Make sure nichrome wire is connected!")
+print("⚠️  Keep away from flammable material!")
 print()
 
-for i in range(3):
-    print(f"Pulse {i+1}: MOSFET ON")
-    GPIO.output(MOSFET, GPIO.HIGH)
-    time.sleep(1)
-    GPIO.output(MOSFET, GPIO.LOW)
-    print(f"Pulse {i+1}: MOSFET OFF")
-    time.sleep(1)
+input("Press ENTER to fire MOSFET for 3 seconds...")
+
+print("MOSFET ON — firing...")
+GPIO.output(MOSFET, GPIO.HIGH)
+time.sleep(3)
+GPIO.output(MOSFET, GPIO.LOW)
+print("MOSFET OFF — done!")
+print()
+print("Check if nichrome wire heated up.")
 
 GPIO.cleanup()
-print("MOSFET Test PASSED ✓")
-print("Verify with multimeter: 3.3V on DRAIN when ON, 0V when OFF")
