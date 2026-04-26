@@ -51,6 +51,7 @@ def spi_transfer(byte):
     for i in range(8):
         GPIO.output(MOSI, (byte & (0x80 >> i)) != 0)
         GPIO.output(SCK, 1)
+        time.sleep(0.00001)
         if GPIO.input(MISO):
             recv |= (0x80 >> i)
         GPIO.output(SCK, 0)
@@ -122,6 +123,7 @@ def send_packet(data):
     write_reg(0x01, 0x85)
 
     GPIO.output(LED_G, 0)
+    print("TX DONE")
 
 # ─────────────────────────────────────
 # BMP280 (SIMPLE)
