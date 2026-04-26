@@ -2,8 +2,6 @@ import RPi.GPIO as GPIO
 import time
 import smbus2
 import serial
-import board
-import adafruit_dht
 
 # ═══════════════════════════════════════════════════
 #  PIN CONFIG
@@ -25,31 +23,31 @@ MOSFET  = 17
 # ═══════════════════════════════════════════════════
 #  REGISTER MAP
 # ═══════════════════════════════════════════════════
-REG_FIFO         = 0x00
-REG_OP_MODE      = 0x01
-REG_FRF_MSB      = 0x06
-REG_FRF_MID      = 0x07
-REG_FRF_LSB      = 0x08
-REG_FIFO_TX_BASE = 0x0E
-REG_FIFO_RX_BASE = 0x0F
-REG_FIFO_ADDR_PTR= 0x0D
-REG_FIFO_RX_CURR = 0x10
-REG_IRQ_FLAGS    = 0x12
-REG_RX_NB_BYTES  = 0x13
-REG_PKT_RSSI     = 0x1A
-REG_PKT_SNR      = 0x1B
-REG_PAYLOAD_LEN  = 0x22
-REG_MODEM_CONFIG1= 0x1D
-REG_MODEM_CONFIG2= 0x1E
-REG_MODEM_CONFIG3= 0x26
-REG_PA_CONFIG    = 0x09
-REG_VERSION      = 0x42
+REG_FIFO          = 0x00
+REG_OP_MODE       = 0x01
+REG_FRF_MSB       = 0x06
+REG_FRF_MID       = 0x07
+REG_FRF_LSB       = 0x08
+REG_FIFO_TX_BASE  = 0x0E
+REG_FIFO_RX_BASE  = 0x0F
+REG_FIFO_ADDR_PTR = 0x0D
+REG_FIFO_RX_CURR  = 0x10
+REG_IRQ_FLAGS     = 0x12
+REG_RX_NB_BYTES   = 0x13
+REG_PKT_RSSI      = 0x1A
+REG_PKT_SNR       = 0x1B
+REG_PAYLOAD_LEN   = 0x22
+REG_MODEM_CONFIG1 = 0x1D
+REG_MODEM_CONFIG2 = 0x1E
+REG_MODEM_CONFIG3 = 0x26
+REG_PA_CONFIG     = 0x09
+REG_VERSION       = 0x42
 
-MODE_LONG_RANGE  = 0x80
-MODE_SLEEP       = 0x00
-MODE_STDBY       = 0x01
-MODE_TX          = 0x03
-MODE_RX_CONT     = 0x05
+MODE_LONG_RANGE   = 0x80
+MODE_SLEEP        = 0x00
+MODE_STDBY        = 0x01
+MODE_TX           = 0x03
+MODE_RX_CONT      = 0x05
 
 # ═══════════════════════════════════════════════════
 #  GPIO SETUP
@@ -79,14 +77,14 @@ def load_bmp280_calibration():
     def s16(i): v = u16(i); return v - 65536 if v > 32767 else v
 
     c = {
-        'T1': u16(0), 'T2': s16(2),  'T3': s16(4),
-        'P1': u16(6), 'P2': s16(8),  'P3': s16(10),
-        'P4': s16(12),'P5': s16(14), 'P6': s16(16),
-        'P7': s16(18),'P8': s16(20), 'P9': s16(22),
+        'T1': u16(0),  'T2': s16(2),  'T3': s16(4),
+        'P1': u16(6),  'P2': s16(8),  'P3': s16(10),
+        'P4': s16(12), 'P5': s16(14), 'P6': s16(16),
+        'P7': s16(18), 'P8': s16(20), 'P9': s16(22),
     }
 
-    bus.write_byte_data(BMP_ADDR, 0xF4, 0x27)  # normal mode, osrs_t=1, osrs_p=1
-    bus.write_byte_data(BMP_ADDR, 0xF5, 0xA0)  # standby 1s, filter off
+    bus.write_byte_data(BMP_ADDR, 0xF4, 0x27)
+    bus.write_byte_data(BMP_ADDR, 0xF5, 0xA0)
     time.sleep(0.5)
     print("✅ BMP280 calibration loaded")
     return c
@@ -134,21 +132,99 @@ def read_bmp():
         return None, None, None
 
 # ═══════════════════════════════════════════════════
-#  DHT22
+#  DHT22 — PURE GPIO BIT-BANG (no board, no library)
 # ═══════════════════════════════════════════════════
-dht_sensor = adafruit_dht.DHT22(board.D24)
-
 def read_dht():
+    """
+    Pure GPIO DHT22 reader.
+    Returns (temperature_C, humidity_%) or (None, None) on failure.
+    """
     try:
-        t = dht_sensor.temperature
-        h = dht_sensor.humidity
-        if t is not None and h is not None:
-            return round(t, 2), round(h, 2)
-    except RuntimeError as e:
-        print(f"⚠️ DHT read: {e}")
+        data = []
+
+        # ── Send start signal ──────────────────────
+        GPIO.setup(DHT_PIN, GPIO.OUT)
+        GPIO.output(DHT_PIN, GPIO.LOW)
+        time.sleep(0.02)                    # hold low 20ms
+        GPIO.output(DHT_PIN, GPIO.HIGH)
+        time.sleep(0.00004)                 # hold high 40us
+
+        # ── Switch to input and wait for sensor response ──
+        GPIO.setup(DHT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+
+        # Wait for sensor to pull LOW (response start)
+        timeout = time.time() + 0.1
+        while GPIO.input(DHT_PIN) == GPIO.HIGH:
+            if time.time() > timeout:
+                return None, None
+
+        # Wait for sensor to pull HIGH (response pulse)
+        timeout = time.time() + 0.1
+        while GPIO.input(DHT_PIN) == GPIO.LOW:
+            if time.time() > timeout:
+                return None, None
+
+        # Wait for sensor to pull LOW again (data start)
+        timeout = time.time() + 0.1
+        while GPIO.input(DHT_PIN) == GPIO.HIGH:
+            if time.time() > timeout:
+                return None, None
+
+        # ── Read 40 bits ──────────────────────────
+        for _ in range(40):
+            # Each bit starts with a ~50us LOW pulse
+            timeout = time.time() + 0.001
+            while GPIO.input(DHT_PIN) == GPIO.LOW:
+                if time.time() > timeout:
+                    return None, None
+
+            # Measure HIGH duration:
+            # ~26-28us = 0 bit
+            # ~70us    = 1 bit
+            high_start = time.time()
+            timeout = time.time() + 0.001
+            while GPIO.input(DHT_PIN) == GPIO.HIGH:
+                if time.time() > timeout:
+                    return None, None
+            high_duration = time.time() - high_start
+
+            data.append(1 if high_duration > 0.00005 else 0)
+
+        # ── Assemble 5 bytes from 40 bits ─────────
+        bytes_data = []
+        for i in range(5):
+            byte = 0
+            for bit in data[i*8 : i*8+8]:
+                byte = (byte << 1) | bit
+            bytes_data.append(byte)
+
+        # ── Verify checksum ───────────────────────
+        checksum = (bytes_data[0] + bytes_data[1] +
+                    bytes_data[2] + bytes_data[3]) & 0xFF
+
+        if checksum != bytes_data[4]:
+            print(f"⚠️ DHT22 checksum fail: calc={checksum}, got={bytes_data[4]}")
+            return None, None
+
+        # ── Decode humidity ───────────────────────
+        humidity = ((bytes_data[0] << 8) | bytes_data[1]) / 10.0
+
+        # ── Decode temperature (signed) ───────────
+        raw_temp = ((bytes_data[2] & 0x7F) << 8) | bytes_data[3]
+        temp = raw_temp / 10.0
+        if bytes_data[2] & 0x80:            # negative temp flag
+            temp = -temp
+
+        # ── Sanity check ──────────────────────────
+        if not (-40 <= temp <= 80) or not (0 <= humidity <= 100):
+            print(f"⚠️ DHT22 out of range: T={temp} H={humidity}")
+            return None, None
+
+        return round(temp, 2), round(humidity, 2)
+
     except Exception as e:
-        print(f"❌ DHT fatal: {e}")
-    return None, None
+        print(f"❌ DHT22 error: {e}")
+        return None, None
 
 # ═══════════════════════════════════════════════════
 #  GPS
@@ -231,7 +307,7 @@ def read_fifo(length):
     return data
 
 # ═══════════════════════════════════════════════════
-#  SET FREQUENCY HELPER
+#  SET FREQUENCY
 # ═══════════════════════════════════════════════════
 def set_frequency(freq_hz):
     frf = int(freq_hz / (32e6 / 524288))
@@ -241,10 +317,6 @@ def set_frequency(freq_hz):
 
 # ═══════════════════════════════════════════════════
 #  LORA INIT
-#  RX on 433 MHz (rescue tower TX freq)
-#  TX on 433 MHz (ground station RX freq)
-#  ⚠️  Both must be 433 — old code used 434 for TX
-#     which is why ground station never received
 # ═══════════════════════════════════════════════════
 def init_lora():
     print("🔄 Resetting LoRa...")
@@ -257,20 +329,18 @@ def init_lora():
 
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_SLEEP); time.sleep(0.1)
 
-    set_frequency(433e6)                    # 433 MHz for both RX and TX
+    set_frequency(433e6)
 
     write_reg(REG_FIFO_TX_BASE,  0x00)
     write_reg(REG_FIFO_RX_BASE,  0x00)
 
-    # SF7, BW125, CR4/5, CRC ON — must match rescue tower + ground station
-    write_reg(REG_MODEM_CONFIG1, 0x72)      # BW=125kHz, CR=4/5, explicit header
-    write_reg(REG_MODEM_CONFIG2, 0x74)      # SF=7, RxCrcOn=1
-    write_reg(REG_MODEM_CONFIG3, 0x04)      # AgcAutoOn
+    write_reg(REG_MODEM_CONFIG1, 0x72)   # BW=125kHz, CR=4/5, explicit header
+    write_reg(REG_MODEM_CONFIG2, 0x74)   # SF=7, RxCrcOn=1
+    write_reg(REG_MODEM_CONFIG3, 0x04)   # AgcAutoOn
 
-    write_reg(REG_PA_CONFIG, 0x8F)          # PA_BOOST +17dBm
-    write_reg(0x23, 0xFF)                   # max payload length
+    write_reg(REG_PA_CONFIG, 0x8F)       # PA_BOOST +17dBm
+    write_reg(0x23, 0xFF)                # max payload length
 
-    # Start listening for rescue tower packets
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_RX_CONT)
 
     print("✅ LoRa ready — 433 MHz, SF7, BW125, CR4/5, CRC ON")
@@ -289,15 +359,14 @@ def crc16(data: bytes) -> int:
 # ═══════════════════════════════════════════════════
 #  SEND MERGED PACKET TO GROUND STATION
 #
-#  UNIFIED FORMAT (14 fields):
-#  relay_id, unix_time, rescue_lat, rescue_lon,
-#  emergency_type, rescue_msg_id, rescue_millis,
+#  FORMAT (15 fields):
+#  relay_id, unix_time,
+#  rescue_lat, rescue_lon, emergency_type,
+#  rescue_msg_id, rescue_millis,
 #  bmp_temp, pressure, altitude,
-#  dht_temp, humidity, pi_lat, pi_lon,
+#  dht_temp, humidity,
+#  pi_lat, pi_lon,
 #  crc16
-#
-#  Ground station can identify this as a relay packet
-#  by checking field count == 15
 # ═══════════════════════════════════════════════════
 relay_id = 0
 
@@ -306,16 +375,14 @@ def send_merged_packet(rescue_parts, bmp_temp, pressure, altitude,
     global relay_id
     relay_id += 1
 
-    # Fields from rescue tower packet
-    rescue_msg_id  = rescue_parts[0]   # tower's own packet counter
-    rescue_millis  = rescue_parts[1]   # tower's millis() — NOT unix time
-    rescue_lat     = rescue_parts[2]   # hardcoded in tower (22.57)
-    rescue_lon     = rescue_parts[3]   # hardcoded in tower (88.36)
-    emergency_type = rescue_parts[4]   # RESCUE / MEDICAL / LOST
+    rescue_msg_id  = rescue_parts[0]
+    rescue_millis  = rescue_parts[1]
+    rescue_lat     = rescue_parts[2]
+    rescue_lon     = rescue_parts[3]
+    emergency_type = rescue_parts[4]
 
-    unix_time = int(time.time())       # Pi's real unix timestamp
+    unix_time = int(time.time())
 
-    # Build payload without CRC
     payload = (
         f"{relay_id},{unix_time},"
         f"{rescue_lat},{rescue_lon},{emergency_type},"
@@ -331,9 +398,9 @@ def send_merged_packet(rescue_parts, bmp_temp, pressure, altitude,
     print(f"\n📤 Sending merged packet [{relay_id}]:")
     print(f"   {full_msg}\n")
 
-    # ── Switch to TX (standby first) ──────────────
+    # ── Switch to TX ──────────────────────────────
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_STDBY); time.sleep(0.01)
-    write_reg(REG_FIFO_TX_BASE, 0x00)
+    write_reg(REG_FIFO_TX_BASE,  0x00)
     write_reg(REG_FIFO_ADDR_PTR, 0x00)
 
     GPIO.output(LED_G, GPIO.HIGH)
@@ -346,10 +413,10 @@ def send_merged_packet(rescue_parts, bmp_temp, pressure, altitude,
     GPIO.output(NSS, GPIO.HIGH)
 
     write_reg(REG_PAYLOAD_LEN, len(encoded))
-    write_reg(REG_IRQ_FLAGS, 0xFF)             # clear flags before TX
+    write_reg(REG_IRQ_FLAGS, 0xFF)
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_TX)
 
-    # Wait for TxDone with timeout
+    # Wait for TxDone
     start = time.time()
     while True:
         if read_reg(REG_IRQ_FLAGS) & 0x08:
@@ -364,7 +431,7 @@ def send_merged_packet(rescue_parts, bmp_temp, pressure, altitude,
     write_reg(REG_IRQ_FLAGS, 0xFF)
     GPIO.output(LED_G, GPIO.LOW)
 
-    # ── Back to RX mode to listen for next rescue packet ──
+    # ── Back to RX ────────────────────────────────
     write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_RX_CONT)
     print("✅ TX done — back to RX")
 
@@ -377,9 +444,9 @@ def receive_loop():
     while True:
         irq = read_reg(REG_IRQ_FLAGS)
 
-        # ── Check for RX done (bit 6) ──────────────
-        if irq & 0x40:
-            # Check for CRC error (bit 5)
+        if irq & 0x40:  # RxDone
+
+            # CRC error check
             if irq & 0x20:
                 print("⚠️ CRC error in received packet — discarding")
                 write_reg(REG_IRQ_FLAGS, 0xFF)
@@ -405,36 +472,30 @@ def receive_loop():
 
             parts = raw_msg.split(',')
 
-            # ── Validate rescue tower packet format ──
-            # Expected: msgID,millis,lat,lon,type,crc  → 6 fields
+            # Validate 6-field rescue tower format
             if len(parts) != 6:
-                print(f"⚠️ Unexpected field count: {len(parts)} (expected 6) — discarding")
+                print(f"⚠️ Unexpected field count: {len(parts)} — discarding")
                 write_reg(REG_IRQ_FLAGS, 0xFF)
                 write_reg(REG_OP_MODE, MODE_LONG_RANGE | MODE_RX_CONT)
                 time.sleep(0.05)
                 continue
 
-            # ── Validate rescue tower's own CRC ──────
-            # Tower uses simple: crc = msgID + millis()
-            # NOTE: millis() overflows at ~49 days, we just verify it matches
+            # Validate tower CRC
             try:
-                tower_msg_id  = int(parts[0])
-                tower_millis  = int(parts[1])
-                tower_crc_rx  = int(parts[5])
+                tower_msg_id   = int(parts[0])
+                tower_millis   = int(parts[1])
+                tower_crc_rx   = int(parts[5])
                 tower_crc_calc = (tower_msg_id + tower_millis) & 0xFFFFFFFF
                 crc_ok = (tower_crc_calc == tower_crc_rx)
-                print(f"   Tower CRC: {'✅ OK' if crc_ok else '❌ FAIL'}")
-                if not crc_ok:
-                    print("   ⚠️ Tower CRC mismatch — still relaying (bad CRC noted)")
+                print(f"   Tower CRC: {'✅ OK' if crc_ok else '❌ FAIL (relaying anyway)'}")
             except:
-                print("   ⚠️ Could not parse tower CRC fields")
+                print("   ⚠️ Could not verify tower CRC")
 
-            # ── Read Pi sensors ──────────────────────
+            # Read Pi sensors
             bmp_temp, pressure, altitude = read_bmp()
             dht_temp, humidity           = read_dht()
             pi_lat,   pi_lon             = read_gps()
 
-            # Fallback values if sensors fail
             if bmp_temp  is None: bmp_temp  = 0.0
             if pressure  is None: pressure  = 0.0
             if altitude  is None: altitude  = 0.0
@@ -445,7 +506,6 @@ def receive_loop():
             print(f"   DHT22 : {dht_temp}°C, {humidity}%")
             print(f"   GPS   : {pi_lat}, {pi_lon}")
 
-            # ── Merge and send to ground station ─────
             send_merged_packet(
                 parts,
                 bmp_temp, pressure, altitude,
