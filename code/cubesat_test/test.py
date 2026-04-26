@@ -94,7 +94,7 @@ def init_lora():
     write_reg(0x1D, 0x72)
     write_reg(0x1E, 0x74)
     write_reg(0x26, 0x04)
-
+    write_reg(0x1D, read_reg(0x1D) & 0xFE)
     write_reg(0x01, 0x81)  # Standby
 
 # ─────────────────────────────────────
