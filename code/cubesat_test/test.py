@@ -280,7 +280,7 @@ def read_bmp():
 def read_dht():
     try:
         import Adafruit_DHT
-        h, t = Adafruit_DHT.read_retry(Adafruit_DHT.DHT22, DHT_PIN)
+        h, t = Adafruit_DHT.read_retry(Adafruit_DHT.DHT11, DHT_PIN)
         if h is not None and t is not None:
             return round(t, 2), round(h, 2)
     except Exception as e:
