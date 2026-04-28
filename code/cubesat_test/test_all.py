@@ -203,7 +203,7 @@ def read_dht():
                     bytes_data[2] + bytes_data[3]) & 0xFF
 
         if checksum != bytes_data[4]:
-            print(f"⚠️ DHT22 checksum fail: calc={checksum}, got={bytes_data[4]}")
+            print(f"⚠️ DHT11 checksum fail: calc={checksum}, got={bytes_data[4]}")
             return None, None
 
         # ── Decode humidity ───────────────────────
@@ -220,14 +220,14 @@ def read_dht():
             temp = -temp
 
         # ── Sanity check ──────────────────────────
-        if not (-40 <= temp <= 80) or not (0 <= humidity <= 100):
-            print(f"⚠️ DHT22 out of range: T={temp} H={humidity}")
+        if not (0 <= temp <= 50) or not (20 <= humidity <= 90):
+            print(f"⚠️ DHT11 out of range: T={temp} H={humidity}")
             return None, None
 
         return round(temp, 2), round(humidity, 2)
 
     except Exception as e:
-        print(f"❌ DHT22 error: {e}")
+        print(f"❌ DHT11 error: {e}")
         return None, None
 
 # ═══════════════════════════════════════════════════
