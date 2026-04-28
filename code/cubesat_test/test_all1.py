@@ -134,83 +134,23 @@ def read_bmp():
 # ═══════════════════════════════════════════════════
 #  DHT11 — PURE GPIO BIT-BANG (no board, no library)
 # ═══════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════
+#  DHT11 — USING ADAFRUIT LIBRARY (STABLE)
+# ═══════════════════════════════════════════════════
 def read_dht():
-    """
-    Pure GPIO DHT11 reader.
-    Returns (temperature_C, humidity_%) or (None, None) on failure.
-    """
     try:
-        data = []
+        import Adafruit_DHT
+        h, t = Adafruit_DHT.read_retry(Adafruit_DHT.DHT11, DHT_PIN)
 
-        # ── Send start signal ──────────────────────
-        GPIO.setup(DHT_PIN, GPIO.OUT)
-        GPIO.output(DHT_PIN, GPIO.LOW)
-        time.sleep(0.02)
-        GPIO.output(DHT_PIN, GPIO.HIGH)
-        time.sleep(0.00004)
+        if h is not None and t is not None:
+            return round(t, 2), round(h, 2)
 
-        GPIO.setup(DHT_PIN, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-
-        timeout = time.time() + 0.1
-        while GPIO.input(DHT_PIN) == GPIO.HIGH:
-            if time.time() > timeout:
-                return None, None
-
-        timeout = time.time() + 0.1
-        while GPIO.input(DHT_PIN) == GPIO.LOW:
-            if time.time() > timeout:
-                return None, None
-
-        timeout = time.time() + 0.1
-        while GPIO.input(DHT_PIN) == GPIO.HIGH:
-            if time.time() > timeout:
-                return None, None
-
-        # ── Read 40 bits ──────────────────────────
-        for _ in range(40):
-            timeout = time.time() + 0.001
-            while GPIO.input(DHT_PIN) == GPIO.LOW:
-                if time.time() > timeout:
-                    return None, None
-
-            high_start = time.time()
-            timeout = time.time() + 0.001
-            while GPIO.input(DHT_PIN) == GPIO.HIGH:
-                if time.time() > timeout:
-                    return None, None
-            high_duration = time.time() - high_start
-
-            data.append(1 if high_duration > 0.00005 else 0)
-
-        # ── Assemble bytes ────────────────────────
-        bytes_data = []
-        for i in range(5):
-            byte = 0
-            for bit in data[i*8 : i*8+8]:
-                byte = (byte << 1) | bit
-            bytes_data.append(byte)
-
-        # ── Checksum ──────────────────────────────
-        checksum = (bytes_data[0] + bytes_data[1] +
-                    bytes_data[2] + bytes_data[3]) & 0xFF
-
-        if checksum != bytes_data[4]:
-            print(f"⚠️ DHT11 checksum fail")
+        else:
+            print("⚠️ DHT11 read failed")
             return None, None
-
-        # ✅ DHT11 decoding (FIXED)
-        humidity = bytes_data[0]
-        temp     = bytes_data[2]
-
-        # ── Sanity check ──────────────────────────
-        if not (0 <= temp <= 50) or not (20 <= humidity <= 90):
-            print(f"⚠️ DHT11 out of range: T={temp} H={humidity}")
-            return None, None
-
-        return round(temp, 2), round(humidity, 2)
 
     except Exception as e:
-        print(f"❌ DHT11 error: {e}")
+        print(f"⚠️ DHT read error: {e}")
         return None, None
 
 # ═══════════════════════════════════════════════════
