@@ -207,11 +207,15 @@ def read_dht():
             return None, None
 
         # ── Decode humidity ───────────────────────
-        humidity = ((bytes_data[0] << 8) | bytes_data[1]) / 10.0
+        #humidity = ((bytes_data[0] << 8) | bytes_data[1]) / 10.0
 
         # ── Decode temperature (signed) ───────────
-        raw_temp = ((bytes_data[2] & 0x7F) << 8) | bytes_data[3]
-        temp = raw_temp / 10.0
+        #raw_temp = ((bytes_data[2] & 0x7F) << 8) | bytes_data[3]
+        #temp = raw_temp / 10.0
+
+        humidity = bytes_data[0]      # integer %
+        temp = bytes_data[2]          # integer °C
+        
         if bytes_data[2] & 0x80:            # negative temp flag
             temp = -temp
 
