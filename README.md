@@ -1,6 +1,7 @@
 # 🛰️Cubesat_Prototype
 A low-cost CubeSat communication network prototype consisting of a rescue tower, satellite node, and ground station using LoRa communication and ESP32/Arduino microcontrollers.
 
+
 # ℹAbstract
 This project presents a compact satellite-based rescue communication system integrating a rescue tower, CubeSat, and ground station with a real-time dashboard. A distress signal transmitted from a DIY rescue tower antenna is received by the CubeSat, which acts as a relay and forwards the signal to the ground station. The ground station processes the data and displays it on a dashboard for monitoring and response. The system demonstrates the practical implementation of CubeSat communication, embedded systems, and long-range wireless transmission using LoRa technology.
 
@@ -61,6 +62,9 @@ The CubeSat concept originated in the late 1990s as a collaborative effort betwe
 ## Rescue Management System
 <img width="2138" height="1202" alt="image" src="https://github.com/user-attachments/assets/1031372b-e7c2-4a83-b71b-8fddf23633d2" />
 
+
+# Weight of the CubeSat
+<img width="960" height="1280" alt="sat1" src="https://github.com/user-attachments/assets/c3968eed-e283-4b0a-828b-9d9b30b77880" />
 
 # Groundstation
 
