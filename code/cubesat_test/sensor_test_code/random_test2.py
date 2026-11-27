@@ -1,25 +1,30 @@
 import serial
+import pynmea2
 
-Import time
+PORT = "/dev/serial0"
+BAUD = 9600
 
-import string import pynmea2
+ser = serial.Serial(PORT, baudrate=BAUD, timeout=1)
+print(f"Reading GPS on {PORT} @ {BAUD} ... (Ctrl+C to stop)")
 
-while True: port=“/dev/ttyAMAO”
+try:
+    while True:
+        line = ser.readline().decode("ascii", errors="ignore").strip()
+        if not line:
+            continue
 
-ser=serial.Serial(port,baudrate=9600,timeout=0.5)
+        print(line)
 
-dataout =pynmea2.NMEAStreamReader()
+        if line.startswith(("$GPRMC", "$GNRMC")):
+            try:
+                msg = pynmea2.parse(line)
+            except pynmea2.ParseError:
+                continue
 
-newdata=ser.readline()
+            if msg.status == "A":
+                print(f"Latitude={msg.latitude} and Longitude={msg.longitude}")
+            else:
+                print("No GPS fix yet (move the antenna near a window/outdoors)")
 
-if newdata[0:6]==“$GPRMC”:
-
-newmsg=pynmea2.parse(newdata)
-
-lat=newmsg.latitude
-
-lng=newmsg.longitude
-
-gps=“Latitude=" +str(lat) + “and Longitude=" +str(lng)
-
-print(gps)
+except KeyboardInterrupt:
+    print("\nStopped")
