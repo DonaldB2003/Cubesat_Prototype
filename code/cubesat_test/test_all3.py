@@ -69,7 +69,7 @@ GPIO.output(LED_B, GPIO.LOW)
 # ═══════════════════════════════════════════════════
 bus      = smbus2.SMBus(1)
 BMP_ADDR = 0x76
-MPU_ADDR = 0x68          # AD0 pin low -> 0x68, AD0 high -> 0x69
+MPU_ADDR = 0x69          # AD0 pin high -> 0x69 (AD0 low -> 0x68)
 
 def load_bmp280_calibration():
     cal = bus.read_i2c_block_data(BMP_ADDR, 0x88, 24)
@@ -144,6 +144,15 @@ MPU_GYRO_CONFIG  = 0x1B
 ACCEL_SCALE = 16384.0    # LSB per g        (range +/-2 g)
 GYRO_SCALE  = 131.0      # LSB per deg/s    (range +/-250 deg/s)
 
+# Offsets from mpu6050_test.py (sensor flat and still, Z up).
+# AZ_OFF already has the 1 g of gravity removed.
+AX_OFF = -0.0842
+AY_OFF = -0.1885
+AZ_OFF =  0.0105
+GX_OFF = -0.7912
+GY_OFF =  4.2234
+GZ_OFF =  0.2652
+
 mpu_ok = False
 
 def init_mpu6050():
@@ -173,13 +182,13 @@ def read_mpu6050():
             v = (h << 8) | l
             return v - 65536 if v > 32767 else v
 
-        ax = s16(d[0],  d[1])  / ACCEL_SCALE
-        ay = s16(d[2],  d[3])  / ACCEL_SCALE
-        az = s16(d[4],  d[5])  / ACCEL_SCALE
+        ax = s16(d[0],  d[1])  / ACCEL_SCALE - AX_OFF
+        ay = s16(d[2],  d[3])  / ACCEL_SCALE - AY_OFF
+        az = s16(d[4],  d[5])  / ACCEL_SCALE - AZ_OFF
         # d[6], d[7] = temperature (not sent)
-        gx = s16(d[8],  d[9])  / GYRO_SCALE
-        gy = s16(d[10], d[11]) / GYRO_SCALE
-        gz = s16(d[12], d[13]) / GYRO_SCALE
+        gx = s16(d[8],  d[9])  / GYRO_SCALE - GX_OFF
+        gy = s16(d[10], d[11]) / GYRO_SCALE - GY_OFF
+        gz = s16(d[12], d[13]) / GYRO_SCALE - GZ_OFF
 
         return (round(ax, 2), round(ay, 2), round(az, 2),
                 round(gx, 1), round(gy, 1), round(gz, 1))
